@@ -7,5 +7,3 @@ __pycache__/
 mlruns/
 mlruns.db
 
-# Data (Optional - usually better to keep raw data local)
-data/processed/
