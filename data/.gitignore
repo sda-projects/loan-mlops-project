@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+.venv/
+*.pyc
+
+# MLflow
+mlruns/
+mlruns.db
+
+# Data (Optional - usually better to keep raw data local)
+data/processed/
