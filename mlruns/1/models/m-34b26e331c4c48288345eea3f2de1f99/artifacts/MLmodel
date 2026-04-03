@@ -1,0 +1,23 @@
+artifact_path: /home/daria/loan-mlops-project/mlruns/1/models/m-34b26e331c4c48288345eea3f2de1f99/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.14.3
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.8.0
+    skops_trusted_types: null
+mlflow_version: 3.10.1
+model_id: m-34b26e331c4c48288345eea3f2de1f99
+model_size_bytes: 916
+model_uuid: m-34b26e331c4c48288345eea3f2de1f99
+prompts: null
+run_id: 2dc24f0ed7b54928b3e24d7cf0b08321
+utc_time_created: '2026-04-03 15:06:28.347431'

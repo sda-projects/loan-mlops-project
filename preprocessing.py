@@ -9,6 +9,7 @@ def load_clean_data(filepath):
 
     df.columns = df.columns.str.strip()
 
+
     #basic cleaning: drop duplicates, handle missing values (adapt - no nans in this database)
 
     df = df.dropna()
