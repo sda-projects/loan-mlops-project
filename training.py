@@ -66,7 +66,7 @@ for model_name, model_obj in models.items():
         mlflow.log_metric("val_f1", f1_score(y_val, y_val_pred))
         mlflow.log_metric("val_auc", roc_auc_score(y_val, y_val_proba))
 
-        # --- STEP 4: THE FINAL TEST (NO TWEAKING ALLOWED HERE) ---
+        # --- STEP 4: THE FINAL TEST
         y_test_proba = best_model.predict_proba(X_test)[:, 1]
         y_test_pred = (y_test_proba >= final_thresh).astype(int)
         
