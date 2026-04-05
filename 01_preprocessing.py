@@ -20,23 +20,39 @@ def add_engineered_features(df):
     feature_df = df.copy()
     eps = 1e-6
 
-    # Ratios derived from the raw financial variables can add signal without changing the source data.
+    # Ratio de la dette totale par rapport aux revenus (mesure le niveau d'endettement global).
     feature_df["debt_to_income"] = feature_df["total_debt_outstanding"] / (feature_df["income"] + eps)
+    
+    # Ratio du prêt en cours par rapport aux revenus (mesure la charge de ce prêt spécifique).
     feature_df["loan_to_income"] = feature_df["loan_amt_outstanding"] / (feature_df["income"] + eps)
+    
+    # Ratio du prêt en cours par rapport à la dette totale (poids du prêt actuel dans la dette).
     feature_df["loan_to_debt"] = feature_df["loan_amt_outstanding"] / (feature_df["total_debt_outstanding"] + eps)
+    
+    # Dette moyenne par ligne de crédit ouverte (mesure la concentration de la dette).
     feature_df["debt_per_credit_line"] = feature_df["total_debt_outstanding"] / (
         feature_df["credit_lines_outstanding"] + eps
     )
+    
+    # Revenu par ligne de crédit ouverte (capacité de revenu par crédit).
     feature_df["income_per_credit_line"] = feature_df["income"] / (
         feature_df["credit_lines_outstanding"] + eps
     )
+    
+    # Nombre de lignes de crédit ouvertes par année d'emploi (vitesse d'accumulation de crédit).
     feature_df["credit_lines_per_year"] = feature_df["credit_lines_outstanding"] / (
         feature_df["years_employed"] + 1
     )
+    
+    # Montant du prêt actuel par année d'emploi.
     feature_df["loan_per_year_employed"] = feature_df["loan_amt_outstanding"] / (
         feature_df["years_employed"] + 1
     )
+    
+    # Interaction entre le score FICO et le revenu (plus le score est élevé, plus le revenu impacte la solvabilité).
     feature_df["fico_income_interaction"] = feature_df["fico_score"] * feature_df["income"]
+    
+    # Interaction entre le score FICO et le taux d'endettement (ajuste le risque selon la solvabilité).
     feature_df["fico_debt_interaction"] = feature_df["fico_score"] * feature_df["debt_to_income"]
 
     return feature_df
