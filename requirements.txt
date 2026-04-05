@@ -59,7 +59,6 @@ mlflow-tracing==3.10.1
 narwhals==2.18.1
 nest-asyncio==1.6.0
 numpy==2.4.4
-nvidia-nccl-cu12==2.29.7
 opentelemetry-api==1.40.0
 opentelemetry-proto==1.40.0
 opentelemetry-sdk==1.40.0
