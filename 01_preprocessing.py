@@ -4,13 +4,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 # Signification des colonnes brutes du dataset :
-# - credit_lines_outstanding : Nombre de lignes de crédit ouvertes.
-# - loan_amt_outstanding : Montant total des prêts en cours.
-# - total_debt_outstanding : Dette totale actuelle (tous crédits confondus).
-# - income : Revenu annuel du client.
-# - years_employed : Nombre d'années d'ancienneté dans l'emploi actuel.
-# - fico_score : Score de crédit FICO (mesure la solvabilité).
-# - default : Variable cible (1 si le client a fait défaut, 0 sinon).
+# - credit_lines_outstanding : Nombre total de lignes de crédit ouvertes par le client (ex: cartes de crédit, prêts personnels, lignes de découvert).
+# - loan_amt_outstanding : Montant principal encore dû sur le prêt actuel qui fait l'objet de l'évaluation de risque.
+# - total_debt_outstanding : Dette totale cumulée du client (toutes dettes confondues : crédits, prêts immobiliers, emprunts divers).
+# - income : Revenu annuel brut du client.
+# - years_employed : Ancienneté professionnelle exprimée en nombre d'années dans l'emploi actuel.
+# - fico_score : Score de crédit FICO, outil standard aux USA pour évaluer la probabilité de remboursement (valeurs généralement entre 300 et 850).
+# - default : Variable cible binaire (1 si le client est en défaut de paiement, 0 s'il rembourse normalement).
 
 
 def load_clean_data(filepath):
