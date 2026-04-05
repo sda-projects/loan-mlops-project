@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler
 # - total_debt_outstanding : Dette totale cumulée du client (toutes dettes confondues : crédits, prêts immobiliers, emprunts divers).
 # - income : Revenu annuel brut du client.
 # - years_employed : Ancienneté professionnelle exprimée en nombre d'années dans l'emploi actuel.
-# - fico_score : Score de crédit FICO, outil standard aux USA pour évaluer la probabilité de remboursement (valeurs généralement entre 300 et 850).
+# - fico_score : Score de crédit FICO, outil standard aux USA pour évaluer la probabilité de remboursement (valeurs généralement entre 300 et 850). Plus ce score est élevé, plus le client est considéré comme solvable.
 # - default : Variable cible binaire (1 si le client est en défaut de paiement, 0 s'il rembourse normalement).
 
 

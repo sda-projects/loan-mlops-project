@@ -5,22 +5,9 @@ from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_sc
 
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
 mlflow.set_experiment("Final_Test_Evaluation")
-DATASET_OPTIONS = {
-    "1": "full_features",
-    "2": "safe_features",
-}
-
 
 def choose_dataset_mode():
-    print("Select evaluation dataset:")
-    print("1. full_features")
-    print("2. safe_features")
-    choice = input("Choice [1/2] (default: 1): ").strip() or "1"
-    if choice in DATASET_OPTIONS:
-        return DATASET_OPTIONS[choice]
-    if choice in DATASET_OPTIONS.values():
-        return choice
-    raise ValueError("Invalid dataset choice. Use 1, 2, full_features, or safe_features.")
+    return ["full_features", "safe_features"]
 
 
 def load_test_split(split_dir):
@@ -40,13 +27,14 @@ def get_latest_finished_run(experiment_name, dataset_mode):
     if experiment is None:
         raise ValueError(f"MLflow experiment not found: {experiment_name}")
 
+    # Recherche des runs terminés avec le bon mode, triés par score F2 décroissant
     runs = mlflow.search_runs(
         experiment_ids=[experiment.experiment_id],
         filter_string=(
             "attributes.status = 'FINISHED' "
             f"and params.feature_mode = '{dataset_mode}'"
         ),
-        order_by=["start_time DESC"],
+        order_by=["metrics.val_f2 DESC"],
         max_results=1
     )
     if runs.empty:
@@ -58,41 +46,47 @@ def get_latest_finished_run(experiment_name, dataset_mode):
     run = runs.iloc[0]
     return {
         "run_id": run["run_id"],
-        "threshold": float(run["params.optimized_threshold"])
+        "threshold": float(run["params.optimized_threshold"]),
+        "val_f2": float(run["metrics.val_f2"])
     }
 
 
 final_result = []
-dataset_mode = choose_dataset_mode()
-split_dir = f"data/processed/{dataset_mode}"
-X_test, y_test = load_test_split(split_dir)
+dataset_modes = choose_dataset_mode()
 
-print("starting final evaluation for the three models")
-print(f"Evaluation dataset mode: {dataset_mode}")
+for dataset_mode in dataset_modes:
+    split_dir = f"data/processed/{dataset_mode}"
+    X_test, y_test = load_test_split(split_dir)
 
-for name, experiment_name in training_experiments.items():
-    info = get_latest_finished_run(experiment_name, dataset_mode)
+    print(f"\nEvaluation dataset mode: {dataset_mode}")
+    print("starting final evaluation for the three models")
 
-    with mlflow.start_run(run_name=f"Test_Eval_{name}"):
-        mlflow.log_param("feature_mode", dataset_mode)
-        model_uri = f"runs:/{info['run_id']}/model"
-        model = mlflow.sklearn.load_model(model_uri)
+    for name, experiment_name in training_experiments.items():
+        info = get_latest_finished_run(experiment_name, dataset_mode)
+        
+        # Affichage du Run ID et du score sélectionné
+        print(f"Modèle sélectionné ({name}) - Run ID : {info['run_id']} | Val F2: {info['val_f2']:.4f}")
 
-        y_proba = model.predict_proba(X_test)[:, 1]
-        y_pred = (y_proba >= info["threshold"]).astype(int)
+        with mlflow.start_run(run_name=f"Test_Eval_{name}_{dataset_mode}"):
+            mlflow.log_param("feature_mode", dataset_mode)
+            model_uri = f"runs:/{info['run_id']}/model"
+            model = mlflow.sklearn.load_model(model_uri)
 
-        metrics = {
-            "test_f1": f1_score(y_test, y_pred),
-            "test_f2": fbeta_score(y_test, y_pred, beta=2),
-            "test_recall": recall_score(y_test, y_pred),
-            "test_precision": precision_score(y_test, y_pred),
-            "test_accuracy": accuracy_score(y_test, y_pred)
-        }
+            y_proba = model.predict_proba(X_test)[:, 1]
+            y_pred = (y_proba >= info["threshold"]).astype(int)
 
-        mlflow.log_params(info)
-        mlflow.log_metrics(metrics)
+            metrics = {
+                "test_f1": f1_score(y_test, y_pred),
+                "test_f2": fbeta_score(y_test, y_pred, beta=2),
+                "test_recall": recall_score(y_test, y_pred),
+                "test_precision": precision_score(y_test, y_pred),
+                "test_accuracy": accuracy_score(y_test, y_pred)
+            }
 
-        final_result.append({"Model": name, **metrics})
-        print(f"{name} Test metrics logged to MLflow!")
+            mlflow.log_params(info)
+            mlflow.log_metrics(metrics)
+
+            final_result.append({"Model": name, "Mode": dataset_mode, **metrics})
+            print(f"{name} Test metrics logged to MLflow!")
 
 print("\n", pd.DataFrame(final_result))
