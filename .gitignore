@@ -11,3 +11,4 @@ venv/
 mlruns/
 AGENTS.md
 GEMINI.md
+alexandre.py

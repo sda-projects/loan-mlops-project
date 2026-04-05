@@ -67,7 +67,40 @@ with col_hist:
     fig_dist.update_layout(bargap=0.1)
     st.plotly_chart(fig_dist, use_container_width=True)
 
-# Onglets
+# Analyse des montants des prêts
+st.subheader("Analyse des montants des prêts")
+
+col_loan1, col_loan2 = st.columns([1, 2])
+
+with col_loan1:
+    fig_box_loan = px.box(df, y="loan_amt_outstanding", title="Dispersion des montants de prêts", color_discrete_sequence=['#00CC96'])
+    st.plotly_chart(fig_box_loan, use_container_width=True)
+
+with col_loan2:
+    fig_hist_loan = px.histogram(df, x="loan_amt_outstanding", nbins=50, title="Distribution des Montants de Prêts", color_discrete_sequence=['#00CC96'], marginal="rug")
+    fig_hist_loan.update_layout(bargap=0.1)
+    st.plotly_chart(fig_hist_loan, use_container_width=True)
+
+
+st.divider() # Séparation avant l'analyse FICO
+
+st.subheader("Relation entre le Score FICO et le Risque de Défaut")
+
+fig_fico = px.histogram(df, x="fico_score", color="default", 
+                   barmode="overlay", 
+                   title="Distribution des scores FICO selon le statut de défaut",
+                   color_discrete_map={0: "green", 1: "red"})
+st.plotly_chart(fig_fico)
+
+st.subheader("Analyse de l'Endettement par Revenu")
+
+fig_scatter = px.scatter(df, x="income", y="total_debt_outstanding", 
+                         color="default",
+                         hover_data=['years_employed'],
+                         title="Dispersion Revenu / Dette")
+st.plotly_chart(fig_scatter)
+
+# Création des onglets
 tab1, tab2 = st.tabs(["🤖 Simulateur de Crédit", "📈 Performance Modèle"])
 
 with tab1:
@@ -121,8 +154,6 @@ with tab1:
             }
         
         # Affichage des résultats dans des cartes stylisées
-        st.subheader("Features calculées en temps réel")
-        st.write("Ces variables sont calculées automatiquement avant l'envoi au modèle :")
         
         # Configuration CSS pour les cartes
         st.markdown("""
