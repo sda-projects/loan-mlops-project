@@ -3,6 +3,15 @@ import os
 from sklearn.model_selection import train_test_split 
 from sklearn.preprocessing import StandardScaler
 
+# Signification des colonnes brutes du dataset :
+# - credit_lines_outstanding : Nombre de lignes de crédit ouvertes.
+# - loan_amt_outstanding : Montant total des prêts en cours.
+# - total_debt_outstanding : Dette totale actuelle (tous crédits confondus).
+# - income : Revenu annuel du client.
+# - years_employed : Nombre d'années d'ancienneté dans l'emploi actuel.
+# - fico_score : Score de crédit FICO (mesure la solvabilité).
+# - default : Variable cible (1 si le client a fait défaut, 0 sinon).
+
 
 def load_clean_data(filepath):
     # Load the dataset.
