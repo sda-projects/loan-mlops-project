@@ -39,21 +39,21 @@ def load_split(split_dir):
 
 param_grids = {
     "Logistic_Regression": {
-        "C": [0.001, 0.01, 0.1, 1, 10, 100],
-        "solver": ["liblinear"]
+        "C": [0.001, 0.01, 0.1, 1, 10, 100],  # Inverse de la force de régularisation (échelle log)
+        "solver": ["liblinear"]              # Algorithme adapté aux petits datasets/régularisation
     },
     "Random_Forest": {
-        "n_estimators": [100, 200, 300],
-        "max_depth": [5, 10, 20, None],
-        "min_samples_split": [2, 5, 10],
-        "min_samples_leaf": [1, 2, 4]
+        "n_estimators": [100, 200, 300],     # Nombre d'arbres (compromis performance/temps)
+        "max_depth": [5, 10, 20, None],      # Profondeur max des arbres (None = expansion totale)
+        "min_samples_split": [2, 5, 10],     # Nb min d'échantillons pour diviser un nœud
+        "min_samples_leaf": [1, 2, 4]        # Nb min d'échantillons requis dans une feuille
     }, 
     "XGBoost": {
-        "n_estimators": [100, 200, 300],
-        "learning_rate": [0.03, 0.05, 0.1, 0.2],
-        "max_depth": [3, 4, 5, 6],
-        "subsample": [0.8, 1.0],
-        "colsample_bytree": [0.8, 1.0]
+        "n_estimators": [100, 200, 300],     # Nombre d'arbres de boosting
+        "learning_rate": [0.03, 0.05, 0.1, 0.2], # Pas d'apprentissage (vitesse de convergence)
+        "max_depth": [3, 4, 5, 6],           # Profondeur des arbres (contrôle le sur-apprentissage)
+        "subsample": [0.8, 1.0],             # Proportion d'échantillons par arbre (robustesse)
+        "colsample_bytree": [0.8, 1.0]       # Proportion de colonnes par arbre (diversité)
     }
 }
 
