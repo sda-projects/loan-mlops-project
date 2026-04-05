@@ -7,7 +7,9 @@ Le pipeline est divisé en trois étapes clés :
 
 1.  **Preprocessing (`01_preprocessing.py`)** :
     *   Nettoyage et ingénierie des features (ratios financiers, interactions).
-    *   Génération de deux jeux de données : `full_features` (complet) et `safe_features` (limité).
+    *   Génération de deux jeux de données pour tester différentes profondeurs d'analyse :
+        *   `full_features` : Scénario avec un volume anormalement élevé de données client (analyse exhaustive).
+        *   `safe_features` : Scénario avec le contexte d'information client habituel (données standard).
     *   Division en jeux d'entraînement, validation et test.
 
 2.  **Entraînement (`02_training.py`)** :
