@@ -153,8 +153,6 @@ with tab1:
                 "fico_income_interaction": fico * income
             }
         
-        # Affichage des résultats dans des cartes stylisées
-        
         # Configuration CSS pour les cartes
         st.markdown("""
         <style>
@@ -165,15 +163,16 @@ with tab1:
             border: 1px solid #ddd;
             margin-bottom: 10px;
         }
-        .feature-name { font-weight: bold; color: #333; }
-        .feature-formula { font-size: 0.85em; color: #666; font-style: italic; }
-        .feature-val { font-size: 1.2em; color: #007bff; font-weight: bold; }
+        .feature-label { font-weight: bold; color: #333; display: block; }
+        .feature-name { font-size: 0.9em; color: #555; font-family: monospace; background: #eee; padding: 2px 4px; border-radius: 4px; }
+        .feature-formula { font-size: 0.85em; color: #666; font-style: italic; display: block; margin-top: 5px; }
+        .feature-val { font-size: 1.2em; color: #007bff; font-weight: bold; margin-top: 5px; display: block; }
         </style>
         """, unsafe_allow_html=True)
 
         cols = st.columns(2)
         for i, (name, val) in enumerate(features_calculated.items()):
-            label = f"{name}"
+            label = ""
             formula = ""
             # Mapping pour labels et formules
             if name == "debt_to_income": 
@@ -186,28 +185,29 @@ with tab1:
                 label = "Poids du prêt actuel"
                 formula = "Prêt en cours / Dette totale"
             elif name == "debt_per_credit_line": 
-                label = "Dette moyenne/crédit"
+                label = "Dette moyenne par ligne de crédit"
                 formula = "Dette totale / Lignes de crédit"
             elif name == "income_per_credit_line": 
-                label = "Revenu/crédit"
+                label = "Revenu par ligne de crédit"
                 formula = "Revenu / Lignes de crédit"
             elif name == "credit_lines_per_year": 
-                label = "Vitesse crédit"
+                label = "Vitesse d'accumulation de crédit"
                 formula = "Lignes de crédit / (Années emploi + 1)"
             elif name == "loan_per_year_employed": 
-                label = "Prêt/an d'emploi"
+                label = "Prêt par année d'emploi"
                 formula = "Prêt en cours / (Années emploi + 1)"
             elif name == "fico_income_interaction": 
-                label = "Interaction FICO/Revenu"
+                label = "Interaction FICO / Revenu"
                 formula = "Score FICO * Revenu"
             elif name == "fico_debt_interaction": 
-                label = "Interaction FICO/Dette"
+                label = "Interaction FICO / Taux endettement"
                 formula = "Score FICO * Taux endettement"
             
             card_html = f"""
             <div class="feature-card">
-                <div class="feature-name">{label}</div>
-                <div class="feature-formula">{formula}</div>
+                <span class="feature-label">{label}</span>
+                <span class="feature-name">{name}</span>
+                <span class="feature-formula">Calcul : {formula}</span>
                 <div class="feature-val">{val:.4f}</div>
             </div>
             """
