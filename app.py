@@ -94,8 +94,53 @@ tab1, tab2 = st.tabs(["🤖 Simulateur de Crédit", "📈 Performance Modèle"])
 
 with tab1:
     st.header("Simulateur de crédit en temps réel")
-    # On peut ajouter par exemple ici le code pour un formulaire de saisie et simulation de crédit
-    ...
+    
+    dataset_mode = st.radio("Sélectionner le type de modèle (features) :", ["full_features", "safe_features"])
+    
+    st.subheader("Entrez les informations du client")
+    
+    # Inputs dynamiques basés sur le mode
+    with st.form("loan_form"):
+        col1, col2 = st.columns(2)
+        income = col1.number_input("Revenu Annuel", min_value=0, value=50000)
+        loan_amt = col2.number_input("Montant du prêt", min_value=0, value=10000)
+        years_emp = col1.number_input("Années d'emploi", min_value=0, value=5)
+        fico = col2.number_input("Score FICO", min_value=300, max_value=850, value=700)
+        
+        credit_lines = None
+        total_debt = None
+        
+        if dataset_mode == "full_features":
+            credit_lines = col1.number_input("Lignes de crédit", min_value=0, value=2)
+            total_debt = col2.number_input("Dette totale", min_value=0, value=5000)
+            
+        submit = st.form_submit_button("Prédire le risque")
+
+    if submit:
+        # Reconstitution des features pour le modèle
+        eps = 1e-6
+        debt_to_income = total_debt / (income + eps) if total_debt is not None else 0
+        loan_to_income = loan_amt / (income + eps)
+        loan_to_debt = loan_amt / (total_debt + eps) if total_debt is not None else 0
+        debt_per_credit = total_debt / (credit_lines + eps) if total_debt is not None else 0
+        income_per_credit = income / (credit_lines + eps) if credit_lines is not None else 0
+        credit_per_year = credit_lines / (years_emp + 1) if credit_lines is not None else 0
+        loan_per_year = loan_amt / (years_emp + 1)
+        fico_income = fico * income
+        fico_debt = fico * debt_to_income
+        
+        # NOTE : Ici, charger le modèle via MLflow ou un chemin local.
+        # Pour cet exemple de prototype, nous affichons les données prêtes pour le modèle.
+        st.write("---")
+        st.success("Simulation en cours (Modèle non chargé dans ce prototype)")
+        st.json({
+            "income": income,
+            "loan_amt_outstanding": loan_amt,
+            "years_employed": years_emp,
+            "fico_score": fico,
+            "debt_to_income": debt_to_income,
+            "loan_to_income": loan_to_income
+        })
 
 with tab2:
     st.header("Suivi MLflow")
