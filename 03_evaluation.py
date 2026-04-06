@@ -4,7 +4,6 @@ import mlflow.sklearn
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score, fbeta_score
 
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
-mlflow.set_experiment("Final_Test_Evaluation")
 
 def choose_dataset_mode():
     return ["full_features", "safe_features"]
@@ -46,6 +45,7 @@ def get_latest_finished_run(experiment_name, dataset_mode):
     run = runs.iloc[0]
     return {
         "run_id": run["run_id"],
+        "experiment_id": experiment.experiment_id,
         "threshold": float(run["params.optimized_threshold"]),
         "val_f2": float(run["metrics.val_f2"])
     }
@@ -67,8 +67,9 @@ for dataset_mode in dataset_modes:
         # Affichage du Run ID et du score sélectionné
         print(f"Modèle sélectionné ({name}) - Run ID : {info['run_id']} | Val F2: {info['val_f2']:.4f}")
 
-        with mlflow.start_run(run_name=f"Test_Eval_{name}_{dataset_mode}"):
-            mlflow.log_param("feature_mode", dataset_mode)
+        # Utilisation du run ID d'entraînement comme parent pour le run d'évaluation imbriqué
+        with mlflow.start_run(run_id=info["run_id"], nested=True, run_name=f"Test_Eval_{name}_{dataset_mode}"):
+            mlflow.log_param("test_evaluation_mode", dataset_mode)
             model_uri = f"runs:/{info['run_id']}/model"
             model = mlflow.sklearn.load_model(model_uri)
 
@@ -83,10 +84,9 @@ for dataset_mode in dataset_modes:
                 "test_accuracy": accuracy_score(y_test, y_pred)
             }
 
-            mlflow.log_params(info)
             mlflow.log_metrics(metrics)
 
             final_result.append({"Model": name, "Mode": dataset_mode, **metrics})
-            print(f"{name} Test metrics logged to MLflow!")
+            print(f"{name} Test metrics logged to MLflow (nested in {info['run_id']})!")
 
 print("\n", pd.DataFrame(final_result))
