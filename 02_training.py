@@ -2,9 +2,13 @@ import pandas as pd
 import numpy as np
 import mlflow 
 import mlflow.sklearn
+import os
+import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from sklearn.base import clone
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, ParameterGrid, StratifiedKFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
@@ -12,6 +16,13 @@ from xgboost import XGBClassifier
 from sklearn.metrics import make_scorer, accuracy_score, f1_score, precision_score, recall_score, roc_auc_score, fbeta_score
 
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
+TMP_DIR = Path(".tmp")
+TMP_DIR.mkdir(exist_ok=True)
+os.environ["TMP"] = str(TMP_DIR.resolve())
+os.environ["TEMP"] = str(TMP_DIR.resolve())
+os.environ["TMPDIR"] = str(TMP_DIR.resolve())
+tempfile.tempdir = str(TMP_DIR.resolve())
+
 DATASET_OPTIONS = {
     "1": "full_features",
     "2": "safe_features",
@@ -67,6 +78,12 @@ models = {
     ])
 }
 
+EXPERIMENT_NAMES = {
+    "Logistic_Regression": "Loan_Default_Logistic_Regression_Local",
+    "Random_Forest": "Loan_Default_Random_Forest_Local",
+    "XGBoost": "Loan_Default_XGBoost_Local",
+}
+
 model_pip_requirements = [
     "mlflow==3.10.1",
     "scikit-learn==1.8.0",
@@ -74,7 +91,13 @@ model_pip_requirements = [
     "xgboost==3.2.0"
 ]
 
+ARTIFACT_TMP_DIR = Path("artifacts_tmp")
+ARTIFACT_TMP_DIR.mkdir(exist_ok=True)
+
 trusted_xgboost_types = [
+    "sklearn.calibration.CalibratedClassifierCV",
+    "sklearn.calibration._CalibratedClassifier",
+    "sklearn.calibration._SigmoidCalibration",
     "xgboost.core.Booster",
     "xgboost.sklearn.XGBClassifier",
     "sklearn.pipeline.Pipeline",
@@ -102,11 +125,18 @@ dataset_modes = choose_dataset_mode()
 for dataset_mode in dataset_modes:
     split_dir = f"data/processed/{dataset_mode}"
     X_train, X_val, y_train, y_val = load_split(split_dir)
+    
+    # Vérification explicite :
+    # En mode 'safe', on ne doit avoir que 4 colonnes (loan_amt, income, years_emp, fico)
+    # En mode 'full', on doit avoir 6 colonnes
+    expected_cols = 4 if dataset_mode == 'safe_features' else 6
+    if X_train.shape[1] != expected_cols:
+        raise ValueError(f"Mismatch: Dataset mode '{dataset_mode}' expected {expected_cols} columns, but got {X_train.shape[1]}")
 
-    print(f"Training with dataset mode: {dataset_mode}")
+    print(f"Training with dataset mode: {dataset_mode} (Columns: {X_train.shape[1]})")
 
     for model_name, model_obj in models.items(): 
-        mlflow.set_experiment(f"Loan_Default_{model_name}")
+        mlflow.set_experiment(EXPERIMENT_NAMES[model_name])
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         run_name = f"{model_name}_{dataset_mode}_{timestamp}"
 
@@ -121,7 +151,7 @@ for dataset_mode in dataset_modes:
                     cv=cv_strategy,
                     scoring=scoring_metrics,
                     refit="f2",
-                    n_jobs=-1
+                    n_jobs=1
                 )
             else:
                 n_iter = min(search_iterations[model_name], total_candidates)
@@ -132,12 +162,18 @@ for dataset_mode in dataset_modes:
                     cv=cv_strategy,
                     scoring=scoring_metrics,
                     refit="f2",
-                    n_jobs=-1,
+                    n_jobs=1,
                     random_state=42
                 )
 
             cv_search.fit(X_train, y_train)
             best_model = cv_search.best_estimator_
+            calibrated_model = CalibratedClassifierCV(
+                estimator=clone(best_model),
+                method="sigmoid",
+                cv=5
+            )
+            calibrated_model.fit(X_train, y_train)
 
             cv_results = (
                 pd.DataFrame(cv_search.cv_results_)
@@ -145,8 +181,8 @@ for dataset_mode in dataset_modes:
                 .reset_index(drop=True)
             )
 
-            # 2. Find best threshold for F2
-            y_val_proba = best_model.predict_proba(X_val)[:, 1]
+            # Use calibrated probabilities for threshold tuning and UI-facing risk scores.
+            y_val_proba = calibrated_model.predict_proba(X_val)[:, 1]
             thresholds = np.linspace(0.1, 0.9, 81)
             
             best_val_f2 = 0 # Initialize this!
@@ -162,6 +198,7 @@ for dataset_mode in dataset_modes:
             y_val_pred = (y_val_proba >= final_thresh).astype(int)
             
             mlflow.log_params(cv_search.best_params_)
+            mlflow.log_param("probability_calibration", "sigmoid_cv5")
             mlflow.log_param("optimized_threshold", round(final_thresh, 3))
             mlflow.log_param("target_metric", "F2_Score")
             mlflow.log_metric("cv_best_f2", cv_search.best_score_)
@@ -170,10 +207,10 @@ for dataset_mode in dataset_modes:
             mlflow.log_metric("cv_best_recall", cv_results.loc[0, "mean_test_recall"])
             mlflow.log_metric("cv_best_accuracy", cv_results.loc[0, "mean_test_accuracy"])
 
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                cv_results_path = Path(tmp_dir) / f"{model_name}_cv_results.csv"
-                cv_results.to_csv(cv_results_path, index=False)
-                mlflow.log_artifact(str(cv_results_path), artifact_path="cv_results")
+            cv_results_path = ARTIFACT_TMP_DIR / f"{model_name}_{dataset_mode}_cv_results.csv"
+            cv_results.to_csv(cv_results_path, index=False)
+            mlflow.log_artifact(str(cv_results_path), artifact_path="cv_results")
+            os.remove(cv_results_path)
 
             # Log both metrics so you can see the trade-off in the UI
             mlflow.log_metric("val_f2", best_val_f2)
@@ -183,15 +220,18 @@ for dataset_mode in dataset_modes:
             mlflow.log_metric("val_accuracy", accuracy_score(y_val, y_val_pred))
             mlflow.log_metric("val_auc", roc_auc_score(y_val, y_val_proba))
 
-            log_model_kwargs = {
-                "sk_model": best_model,
-                "name": "model",
-                "serialization_format": "skops",
-                "pip_requirements": model_pip_requirements,
-                "skops_trusted_types": trusted_xgboost_types
-            }
+            model_export_dir = ARTIFACT_TMP_DIR / f"{run_name}_model"
+            if model_export_dir.exists():
+                shutil.rmtree(model_export_dir)
 
-            mlflow.sklearn.log_model(**log_model_kwargs)
+            mlflow.sklearn.save_model(
+                sk_model=calibrated_model,
+                path=str(model_export_dir),
+                serialization_format="skops",
+                pip_requirements=model_pip_requirements,
+                skops_trusted_types=trusted_xgboost_types
+            )
+            mlflow.log_artifacts(str(model_export_dir), artifact_path="model")
 
             print(f"{model_name} Optimized for F2!")
             print(f"   Best Thresh: {final_thresh:.3f} | Val F2: {best_val_f2:.4f}")

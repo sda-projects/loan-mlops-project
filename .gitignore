@@ -12,3 +12,5 @@ mlruns/
 AGENTS.md
 GEMINI.md
 alexandre.py
+.tmp/
+artifacts_tmp/

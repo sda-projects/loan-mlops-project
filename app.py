@@ -3,20 +3,82 @@ import pandas as pd
 import plotly.express as px
 import mlflow
 import mlflow.sklearn
+from mlflow.exceptions import MlflowException
+from mlflow.tracking import MlflowClient
 import os
+from pathlib import Path
 
 # Configuration MLflow
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
+MLFLOW_CLIENT = MlflowClient()
+
+FEATURE_COLUMNS = {
+    "full_features": [
+        "credit_lines_outstanding",
+        "loan_amt_outstanding",
+        "total_debt_outstanding",
+        "income",
+        "years_employed",
+        "fico_score",
+    ],
+    "safe_features": [
+        "loan_amt_outstanding",
+        "income",
+        "years_employed",
+        "fico_score",
+    ],
+}
+
+SIMULATOR_MODEL_PRIORITY = [
+    "Loan_Default_Logistic_Regression_Local",
+    "Loan_Default_Random_Forest_Local",
+    "Loan_Default_XGBoost_Local",
+]
 
 # Chargement des données
 df = pd.read_csv("data/Loan_Data.csv")
 
-def get_best_run(dataset_mode):
-    best_overall_run = None
-    best_f2 = -1
-    
-    experiments = ["Loan_Default_Logistic_Regression", "Loan_Default_Random_Forest", "Loan_Default_XGBoost"]
-    
+
+def model_feature_names(model):
+    if hasattr(model, "feature_names_in_"):
+        return list(model.feature_names_in_)
+
+    for step in model.named_steps.values():
+        if hasattr(step, "feature_names_in_"):
+            return list(step.feature_names_in_)
+
+    return None
+
+
+def get_model_artifact_path(run_id):
+    artifact_uri = MLFLOW_CLIENT.get_run(run_id).info.artifact_uri
+    if artifact_uri.startswith("file:"):
+        artifact_uri = artifact_uri.removeprefix("file:")
+    return str(Path(artifact_uri) / "model")
+
+
+def get_logistic_pipeline(model):
+    if hasattr(model, "named_steps"):
+        return model
+
+    if hasattr(model, "calibrated_classifiers_") and model.calibrated_classifiers_:
+        calibrated_estimator = model.calibrated_classifiers_[0].estimator
+        if hasattr(calibrated_estimator, "named_steps"):
+            return calibrated_estimator
+
+    if hasattr(model, "estimator") and hasattr(model.estimator, "named_steps"):
+        return model.estimator
+
+    return None
+
+def get_best_run(dataset_mode, experiment_priority=None):
+    expected_columns = FEATURE_COLUMNS[dataset_mode]
+    experiments = experiment_priority or [
+        "Loan_Default_Logistic_Regression_Local",
+        "Loan_Default_Random_Forest_Local",
+        "Loan_Default_XGBoost_Local",
+    ]
+
     for exp_name in experiments:
         experiment = mlflow.get_experiment_by_name(exp_name)
         if not experiment:
@@ -24,20 +86,29 @@ def get_best_run(dataset_mode):
             
         runs = mlflow.search_runs(
             experiment_ids=[experiment.experiment_id],
-            filter_string=f"params.feature_mode = '{dataset_mode}'",
+            filter_string=(
+                "attributes.status = 'FINISHED' "
+                f"and params.feature_mode = '{dataset_mode}'"
+            ),
             order_by=["metrics.val_f2 DESC"],
-            max_results=1
+            max_results=20
         )
         
-        if not runs.empty:
-            run = runs.iloc[0]
-            val_f2 = float(run["metrics.val_f2"])
-            if val_f2 > best_f2:
-                best_f2 = val_f2
-                best_overall_run = run
-                best_overall_run["model_name"] = exp_name.replace("Loan_Default_", "")
-                
-    return best_overall_run
+        for _, run in runs.iterrows():
+            try:
+                model = mlflow.sklearn.load_model(get_model_artifact_path(run["run_id"]))
+            except MlflowException:
+                continue
+
+            feature_names = model_feature_names(model)
+
+            if feature_names is not None and feature_names != expected_columns:
+                continue
+
+            run["model_name"] = exp_name.replace("Loan_Default_", "")
+            return run
+
+    return None
 
 st.title("Système d'Aide à la Décision et de Prédiction du Risque de Crédit")
 
@@ -60,12 +131,12 @@ col_box, col_hist = st.columns([1, 2])
 
 with col_box:
     fig_box = px.box(df, y="income", title="Dispersion des revenus", points="all", color_discrete_sequence=['#636EFA'])
-    st.plotly_chart(fig_box, use_container_width=True)
+    st.plotly_chart(fig_box, width='stretch')
 
 with col_hist:
     fig_dist = px.histogram(df, x="income", nbins=50, title="Histogramme : Fréquence des Revenus", color_discrete_sequence=['#636EFA'], marginal="rug") 
     fig_dist.update_layout(bargap=0.1)
-    st.plotly_chart(fig_dist, use_container_width=True)
+    st.plotly_chart(fig_dist, width='stretch')
 
 # Analyse des montants des prêts
 st.subheader("Analyse des montants des prêts")
@@ -74,12 +145,12 @@ col_loan1, col_loan2 = st.columns([1, 2])
 
 with col_loan1:
     fig_box_loan = px.box(df, y="loan_amt_outstanding", title="Dispersion des montants de prêts", color_discrete_sequence=['#00CC96'])
-    st.plotly_chart(fig_box_loan, use_container_width=True)
+    st.plotly_chart(fig_box_loan, width='stretch')
 
 with col_loan2:
     fig_hist_loan = px.histogram(df, x="loan_amt_outstanding", nbins=50, title="Distribution des Montants de Prêts", color_discrete_sequence=['#00CC96'], marginal="rug")
     fig_hist_loan.update_layout(bargap=0.1)
-    st.plotly_chart(fig_hist_loan, use_container_width=True)
+    st.plotly_chart(fig_hist_loan, width='stretch')
 
 
 st.divider() # Séparation avant l'analyse FICO
@@ -124,95 +195,23 @@ with tab1:
             
         submit = st.form_submit_button("Prédire le risque")
 
-    # Calcul temps réel des features ingénieries
-    eps = 1e-6
+    # Prédiction en temps réel
     if submit:
-        # 1. Section : Affichage des features
-        with st.container(border=True):
-            st.subheader("Features calculées en temps réel")
-            st.caption("Ces variables sont calculées automatiquement avant l'envoi au modèle :")
-            
-            features_calculated = {}
-            # ... (calcul de features inchangé)
-            if dataset_mode == "full_features":
-                features_calculated = {
-                    "debt_to_income": total_debt / (income + eps),
-                    "loan_to_income": loan_amt / (income + eps),
-                    "loan_to_debt": loan_amt / (total_debt + eps),
-                    "debt_per_credit_line": total_debt / (credit_lines + eps),
-                    "income_per_credit_line": income / (credit_lines + eps),
-                    "credit_lines_per_year": credit_lines / (years_emp + 1),
-                    "loan_per_year_employed": loan_amt / (years_emp + 1),
-                    "fico_income_interaction": fico * income,
-                    "fico_debt_interaction": fico * (total_debt / (income + eps))
-                }
-            else:
-                features_calculated = {
-                    "loan_to_income": loan_amt / (income + eps),
-                    "loan_per_year_employed": loan_amt / (years_emp + 1),
-                    "fico_income_interaction": fico * income
-                }
-            
-            # Configuration CSS pour les cartes
-            st.markdown("""
-            <style>
-            .feature-card {
-                background-color: #262730;
-                padding: 15px;
-                border-radius: 10px;
-                border: 1px solid #464e5f;
-                margin-bottom: 10px;
-            }
-            .feature-label { font-weight: bold; color: #FAFAFA; display: block; }
-            .feature-name { font-size: 0.9em; color: #E0E0E0; font-family: monospace; background: #333; padding: 2px 4px; border-radius: 4px; }
-            .feature-formula { font-size: 0.85em; color: #B0B0B0; font-style: italic; display: block; margin-top: 5px; }
-            .feature-val { font-size: 1.2em; color: #00CC96; font-weight: bold; margin-top: 5px; display: block; }
-            </style>
-            """, unsafe_allow_html=True)
-
-            cols = st.columns(2)
-            for i, (name, val) in enumerate(features_calculated.items()):
-                label = ""
-                formula = ""
-                # Mapping pour labels et formules
-                if name == "debt_to_income": 
-                    label = "Endettement global"
-                    formula = "Dette totale / Revenu"
-                elif name == "loan_to_income": 
-                    label = "Charge du prêt"
-                    formula = "Prêt en cours / Revenu"
-                elif name == "loan_to_debt": 
-                    label = "Poids du prêt actuel"
-                    formula = "Prêt en cours / Dette totale"
-                elif name == "debt_per_credit_line": 
-                    label = "Dette moyenne par ligne de crédit"
-                    formula = "Dette totale / Lignes de crédit"
-                elif name == "income_per_credit_line": 
-                    label = "Revenu par ligne de crédit"
-                    formula = "Revenu / Lignes de crédit"
-                elif name == "credit_lines_per_year": 
-                    label = "Vitesse d'accumulation de crédit"
-                    formula = "Lignes de crédit / (Années emploi + 1)"
-                elif name == "loan_per_year_employed": 
-                    label = "Prêt par année d'emploi"
-                    formula = "Prêt en cours / (Années emploi + 1)"
-                elif name == "fico_income_interaction": 
-                    label = "Interaction FICO / Revenu"
-                    formula = "Score FICO * Revenu"
-                elif name == "fico_debt_interaction": 
-                    label = "Interaction FICO / Taux endettement"
-                    formula = "Score FICO * Taux endettement"
-                
-                card_html = f"""
-                <div class="feature-card">
-                    <span class="feature-label">{label}</span>
-                    <span class="feature-name">{name}</span>
-                    <span class="feature-formula">Calcul : {formula}</span>
-                    <div class="feature-val">{val:.4f}</div>
-                </div>
-                """
-                cols[i % 2].markdown(card_html, unsafe_allow_html=True)
-
+        # 1. Section : Résumé des inputs
+        st.subheader("Données saisies")
+        input_data = {
+            "income": income,
+            "loan_amt_outstanding": loan_amt,
+            "years_employed": years_emp,
+            "fico_score": fico
+        }
+        if dataset_mode == "full_features":
+            input_data.update({
+                "credit_lines_outstanding": credit_lines,
+                "total_debt_outstanding": total_debt
+            })
+        
+        st.write("Variables utilisées :", input_data)
         st.divider()
 
         # 2. Section : Prédiction et Analyse
@@ -220,7 +219,10 @@ with tab1:
             st.subheader("Résultat de l'analyse")
             
             # 1. Charger le meilleur run
-            best_run = get_best_run(dataset_mode)
+            best_run = get_best_run(
+                dataset_mode,
+                experiment_priority=SIMULATOR_MODEL_PRIORITY,
+            )
             if best_run is None:
                 st.error("Aucun modèle entraîné trouvé pour ce mode.")
             else:
@@ -231,42 +233,17 @@ with tab1:
 
                 st.caption(f"Modèle : {model_name} | ID : {run_id} | F2-Score : {val_f2:.4f}")
 
+                st.caption(f"Seuil de decision : {threshold:.1%}")
+
                 # 2. Charger le pipeline
-                model = mlflow.sklearn.load_model(f"runs:/{run_id}/model")
+                model = mlflow.sklearn.load_model(get_model_artifact_path(run_id))
 
                 # 3. Préparer les données pour le modèle
-                features_model = features_calculated.copy()
-                features_model.update({
-                    "income": income,
-                    "loan_amt_outstanding": loan_amt,
-                    "years_employed": years_emp,
-                    "fico_score": fico
-                })
+                # On force la liste des colonnes dans l'ordre exact attendu par le modèle
+                cols_order = FEATURE_COLUMNS[dataset_mode]
                 
-                if dataset_mode == "full_features":
-                    features_model.update({
-                        "credit_lines_outstanding": credit_lines,
-                        "total_debt_outstanding": total_debt
-                    })
-                    ordered_cols = [
-                        "credit_lines_outstanding", "loan_amt_outstanding", "total_debt_outstanding", 
-                        "income", "years_employed", "fico_score", "debt_to_income", 
-                        "loan_to_income", "loan_to_debt", "debt_per_credit_line", 
-                        "income_per_credit_line", "credit_lines_per_year", 
-                        "loan_per_year_employed", "fico_income_interaction", "fico_debt_interaction"
-                    ]
-                else:
-                    ordered_cols = [
-                        "loan_amt_outstanding", "income", "years_employed", 
-                        "fico_score", "loan_to_income", "loan_per_year_employed", 
-                        "fico_income_interaction"
-                    ]
-                    
-                input_df = pd.DataFrame([features_model])[ordered_cols]
-                
-                # 4. Prédiction
-                proba = model.predict_proba(input_df)[0][1]
-                is_default = proba >= threshold
+                # Construction du DataFrame avec l'ordre forcé
+                input_df = pd.DataFrame([input_data])[cols_order]
                 
                 # 4. Prédiction
                 proba = model.predict_proba(input_df)[0][1]
@@ -275,27 +252,32 @@ with tab1:
                 status_text = "OUI" if is_default else "NON"
                 status_color = "red" if is_default else "green"
 
-                # Utilisation d'un conteneur avec bordure pour regrouper proprement
+                # Conteneur des résultats
                 with st.container(border=True):
                     st.markdown(f"#### Risque de défaut : <span style='color:{status_color}'>{status_text}</span>", unsafe_allow_html=True)
                     st.caption(f"Probabilité : {proba:.2%}")
                     st.progress(float(proba))
 
                     # 5. Interprétabilité (seulement pour la Régression Logistique)
-                    if model_name == "Logistic_Regression":
+                    logistic_pipeline = get_logistic_pipeline(model)
+                    if model_name.startswith("Logistic_Regression") and logistic_pipeline is not None:
                         st.write("##### Analyse des facteurs d'influence")
                         
-                        clf = model.named_steps['clf']
+                        clf = logistic_pipeline.named_steps['clf']
+                        scaled_input = logistic_pipeline.named_steps['scaler'].transform(input_df)
                         coeffs = pd.DataFrame(clf.coef_[0], index=input_df.columns, columns=["Poids"])
                         
-                        impact = coeffs["Poids"] * input_df.iloc[0]
-                        impact_df = impact.sort_values(ascending=False)
+                        impact = coeffs["Poids"].values * scaled_input[0]
+                        impact_df = pd.DataFrame(impact, index=input_df.columns, columns=["Impact"])
+                        impact_df = impact_df.sort_values(by="Impact", ascending=False)
                         
                         fig_impact = px.bar(impact_df, orientation='h', 
-                                            color=impact_df > 0, 
+                                            color=impact_df["Impact"] > 0, 
                                             color_discrete_map={True: '#FF4B4B', False: '#2ECC71'})
                         fig_impact.update_layout(showlegend=False, margin=dict(l=0, r=0, t=20, b=20), height=300)
                         st.plotly_chart(fig_impact, width='stretch')
+                    elif model_name.startswith("Logistic_Regression"):
+                        st.caption("Analyse des facteurs indisponible sur la version calibrÃ©e du modÃ¨le.")
 
 with tab2:
     st.header("Suivi MLflow")
