@@ -26,7 +26,9 @@ def load_clean_data(filepath):
 
 
 def select_feature_columns(feature_df, target_column, feature_mode):
-    feature_columns = [
+    # En mode 'full', on prend toutes les colonnes originales.
+    # En mode 'safe', on restreint à une sous-sélection (ex: sans total_debt_outstanding).
+    full_columns = [
         "credit_lines_outstanding",
         "loan_amt_outstanding",
         "total_debt_outstanding",
@@ -34,8 +36,22 @@ def select_feature_columns(feature_df, target_column, feature_mode):
         "years_employed",
         "fico_score",
     ]
+    safe_columns = [
+        "loan_amt_outstanding",
+        "income",
+        "years_employed",
+        "fico_score",
+    ]
 
-    X = feature_df[feature_columns].copy()
+    feature_sets = {
+        "full_features": full_columns,
+        "safe_features": safe_columns,
+    }
+    
+    if feature_mode not in feature_sets:
+        raise ValueError(f"Unknown feature mode: {feature_mode}")
+
+    X = feature_df[feature_sets[feature_mode]].copy()
     y = feature_df[target_column]
     return X, y
 
