@@ -41,5 +41,9 @@ pip install -r requirements.txt
 
 ### 3. Interface
 ```bash
+# Dashboard Streamlit
 streamlit run app.py
+
+# Interface MLflow
+mlflow ui
 ```
