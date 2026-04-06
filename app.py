@@ -229,9 +229,9 @@ with tab1:
                 threshold = float(best_run["params.optimized_threshold"])
                 model_name = best_run["model_name"]
 
-                st.info(f"Modèle utilisé ({model_name}) - Run ID : {run_id} (Score F2 : {val_f2:.4f})")
+                st.caption(f"Modèle : {model_name} | F2-Score : {val_f2:.4f}")
 
-                # 2. Charger le pipeline (inclut le scaler)
+                # 2. Charger le pipeline
                 model = mlflow.sklearn.load_model(f"runs:/{run_id}/model")
 
                 # 3. Préparer les données pour le modèle
@@ -268,35 +268,32 @@ with tab1:
                 proba = model.predict_proba(input_df)[0][1]
                 is_default = proba >= threshold
                 
-                c1, c2 = st.columns([1, 2])
-                if is_default:
-                    c1.error("🚨 RISQUE ÉLEVÉ")
-                    st.warning("Le modèle prédit un risque de défaut pour ce dossier.")
-                else:
-                    c1.success("✅ RISQUE FAIBLE")
-                    st.info("Le modèle ne détecte pas de risque significatif de défaut.")
-                
-                c2.metric("Probabilité de défaut", f"{proba:.2%}")
-                c2.progress(float(proba))
+                # Regroupement des résultats dans un conteneur stylisé
+                with st.container(border=True):
+                    c1, c2 = st.columns([1, 2])
+                    
+                    status_color = "red" if is_default else "green"
+                    status_text = "RISQUE ÉLEVÉ" if is_default else "RISQUE FAIBLE"
+                    
+                    c1.markdown(f"### <span style='color:{status_color}'>{status_text}</span>", unsafe_allow_html=True)
+                    c2.metric("Probabilité de défaut", f"{proba:.2%}")
+                    st.progress(float(proba))
 
                 # 5. Interprétabilité (seulement pour la Régression Logistique)
                 if model_name == "Logistic_Regression":
-                    st.divider()
                     st.subheader("💡 Analyse des facteurs d'influence")
                     
                     clf = model.named_steps['clf']
                     coeffs = pd.DataFrame(clf.coef_[0], index=input_df.columns, columns=["Poids"])
                     
-                    # Impact = poids * valeur (déjà scalée par le pipeline)
                     impact = coeffs["Poids"] * input_df.iloc[0]
                     impact_df = impact.sort_values(ascending=False)
                     
                     fig_impact = px.bar(impact_df, orientation='h', 
-                                        title="Contribution des variables au score de risque",
                                         color=impact_df > 0, 
-                                        color_discrete_map={True: '#FF4B4B', False: '#00CC96'})
-                    fig_impact.update_layout(showlegend=False)
-                    st.plotly_chart(fig_impact, width='stretch') # Corrigé 'use_container_width' par 'width' comme conseillé par Streamlit
+                                        color_discrete_map={True: '#FF4B4B', False: '#2ECC71'})
+                    fig_impact.update_layout(showlegend=False, margin=dict(l=0, r=0, t=20, b=20), height=300)
+                    st.plotly_chart(fig_impact, width='stretch')
 
 with tab2:
     st.header("Suivi MLflow")
