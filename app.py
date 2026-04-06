@@ -128,8 +128,8 @@ with tab1:
     eps = 1e-6
     if submit:
         # 1. Section : Affichage des features
-        with st.container():
-            st.subheader("🛠️ Features calculées en temps réel")
+        with st.container(border=True):
+            st.subheader("Features calculées en temps réel")
             st.caption("Ces variables sont calculées automatiquement avant l'envoi au modèle :")
             
             features_calculated = {}
@@ -157,16 +157,16 @@ with tab1:
             st.markdown("""
             <style>
             .feature-card {
-                background-color: #f0f2f6;
+                background-color: #262730;
                 padding: 15px;
                 border-radius: 10px;
-                border: 1px solid #ddd;
+                border: 1px solid #464e5f;
                 margin-bottom: 10px;
             }
-            .feature-label { font-weight: bold; color: #333; display: block; }
-            .feature-name { font-size: 0.9em; color: #555; font-family: monospace; background: #eee; padding: 2px 4px; border-radius: 4px; }
-            .feature-formula { font-size: 0.85em; color: #666; font-style: italic; display: block; margin-top: 5px; }
-            .feature-val { font-size: 1.2em; color: #007bff; font-weight: bold; margin-top: 5px; display: block; }
+            .feature-label { font-weight: bold; color: #FAFAFA; display: block; }
+            .feature-name { font-size: 0.9em; color: #E0E0E0; font-family: monospace; background: #333; padding: 2px 4px; border-radius: 4px; }
+            .feature-formula { font-size: 0.85em; color: #B0B0B0; font-style: italic; display: block; margin-top: 5px; }
+            .feature-val { font-size: 1.2em; color: #00CC96; font-weight: bold; margin-top: 5px; display: block; }
             </style>
             """, unsafe_allow_html=True)
 
