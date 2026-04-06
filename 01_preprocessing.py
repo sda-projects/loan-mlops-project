@@ -25,97 +25,24 @@ def load_clean_data(filepath):
     return df 
 
 
-def add_engineered_features(df):
-    feature_df = df.copy()
-    eps = 1e-6
-
-    # Ratio de la dette totale par rapport aux revenus (mesure le niveau d'endettement global).
-    feature_df["debt_to_income"] = feature_df["total_debt_outstanding"] / (feature_df["income"] + eps)
-    
-    # Ratio du prêt en cours par rapport aux revenus (mesure la charge de ce prêt spécifique).
-    feature_df["loan_to_income"] = feature_df["loan_amt_outstanding"] / (feature_df["income"] + eps)
-    
-    # Ratio du prêt en cours par rapport à la dette totale (poids du prêt actuel dans la dette).
-    feature_df["loan_to_debt"] = feature_df["loan_amt_outstanding"] / (feature_df["total_debt_outstanding"] + eps)
-    
-    # Dette moyenne par ligne de crédit ouverte (mesure la concentration de la dette).
-    feature_df["debt_per_credit_line"] = feature_df["total_debt_outstanding"] / (
-        feature_df["credit_lines_outstanding"] + eps
-    )
-    
-    # Revenu par ligne de crédit ouverte (capacité de revenu par crédit).
-    feature_df["income_per_credit_line"] = feature_df["income"] / (
-        feature_df["credit_lines_outstanding"] + eps
-    )
-    
-    # Nombre de lignes de crédit ouvertes par année d'emploi (vitesse d'accumulation de crédit).
-    feature_df["credit_lines_per_year"] = feature_df["credit_lines_outstanding"] / (
-        feature_df["years_employed"] + 1
-    )
-    
-    # Montant du prêt actuel par année d'emploi.
-    feature_df["loan_per_year_employed"] = feature_df["loan_amt_outstanding"] / (
-        feature_df["years_employed"] + 1
-    )
-    
-    # Interaction entre le score FICO et le revenu (plus le score est élevé, plus le revenu impacte la solvabilité).
-    feature_df["fico_income_interaction"] = feature_df["fico_score"] * feature_df["income"]
-    
-    # Interaction entre le score FICO et le taux d'endettement (ajuste le risque selon la solvabilité).
-    feature_df["fico_debt_interaction"] = feature_df["fico_score"] * feature_df["debt_to_income"]
-
-    return feature_df
-
-
 def select_feature_columns(feature_df, target_column, feature_mode):
-    full_feature_columns = [
+    feature_columns = [
         "credit_lines_outstanding",
         "loan_amt_outstanding",
         "total_debt_outstanding",
         "income",
         "years_employed",
         "fico_score",
-        "debt_to_income",
-        "loan_to_income",
-        "loan_to_debt",
-        "debt_per_credit_line",
-        "income_per_credit_line",
-        "credit_lines_per_year",
-        "loan_per_year_employed",
-        "fico_income_interaction",
-        "fico_debt_interaction",
-    ]
-    safe_feature_columns = [
-        "loan_amt_outstanding",
-        "income",
-        "years_employed",
-        "fico_score",
-        "loan_to_income",
-        "loan_per_year_employed",
-        "fico_income_interaction",
     ]
 
-    feature_sets = {
-        "full_features": full_feature_columns,
-        "safe_features": safe_feature_columns,
-    }
-    if feature_mode not in feature_sets:
-        raise ValueError(
-            f"Unknown feature mode: {feature_mode}. "
-            f"Expected one of {list(feature_sets)}."
-        )
-
-    selected_columns = feature_sets[feature_mode]
-    X = feature_df[selected_columns].copy()
+    X = feature_df[feature_columns].copy()
     y = feature_df[target_column]
     return X, y
 
 
 def split_data(df, target_column, feature_mode):
-    feature_df = add_engineered_features(df)
-
-    # Keep the target out of the feature matrix and switch feature sets explicitly.
-    X, y = select_feature_columns(feature_df, target_column, feature_mode)
+    # Keep the target out of the feature matrix.
+    X, y = select_feature_columns(df, target_column, feature_mode)
 
     # First split: pull out the test set (15%).
     X_temp, X_test, y_temp, y_test = train_test_split(
