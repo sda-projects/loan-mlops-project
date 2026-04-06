@@ -217,7 +217,7 @@ with tab1:
 
         # 2. Section : Prédiction et Analyse
         with st.container():
-            st.subheader("🎯 Résultat de l'analyse")
+            st.subheader("Résultat de l'analyse")
             
             # 1. Charger le meilleur run
             best_run = get_best_run(dataset_mode)
@@ -229,7 +229,7 @@ with tab1:
                 threshold = float(best_run["params.optimized_threshold"])
                 model_name = best_run["model_name"]
 
-                st.caption(f"Modèle : {model_name} | F2-Score : {val_f2:.4f}")
+                st.caption(f"Modèle : {model_name} | ID : {run_id} | F2-Score : {val_f2:.4f}")
 
                 # 2. Charger le pipeline
                 model = mlflow.sklearn.load_model(f"runs:/{run_id}/model")
@@ -268,32 +268,34 @@ with tab1:
                 proba = model.predict_proba(input_df)[0][1]
                 is_default = proba >= threshold
                 
-                # Regroupement des résultats dans un conteneur stylisé
+                # 4. Prédiction
+                proba = model.predict_proba(input_df)[0][1]
+                is_default = proba >= threshold
+                
+                status_text = "OUI" if is_default else "NON"
+                status_color = "red" if is_default else "green"
+
+                # Utilisation d'un conteneur avec bordure pour regrouper proprement
                 with st.container(border=True):
-                    c1, c2 = st.columns([1, 2])
-                    
-                    status_color = "red" if is_default else "green"
-                    status_text = "RISQUE ÉLEVÉ" if is_default else "RISQUE FAIBLE"
-                    
-                    c1.markdown(f"### <span style='color:{status_color}'>{status_text}</span>", unsafe_allow_html=True)
-                    c2.metric("Probabilité de défaut", f"{proba:.2%}")
+                    st.markdown(f"#### Risque de défaut : <span style='color:{status_color}'>{status_text}</span>", unsafe_allow_html=True)
+                    st.caption(f"Probabilité : {proba:.2%}")
                     st.progress(float(proba))
 
-                # 5. Interprétabilité (seulement pour la Régression Logistique)
-                if model_name == "Logistic_Regression":
-                    st.subheader("💡 Analyse des facteurs d'influence")
-                    
-                    clf = model.named_steps['clf']
-                    coeffs = pd.DataFrame(clf.coef_[0], index=input_df.columns, columns=["Poids"])
-                    
-                    impact = coeffs["Poids"] * input_df.iloc[0]
-                    impact_df = impact.sort_values(ascending=False)
-                    
-                    fig_impact = px.bar(impact_df, orientation='h', 
-                                        color=impact_df > 0, 
-                                        color_discrete_map={True: '#FF4B4B', False: '#2ECC71'})
-                    fig_impact.update_layout(showlegend=False, margin=dict(l=0, r=0, t=20, b=20), height=300)
-                    st.plotly_chart(fig_impact, width='stretch')
+                    # 5. Interprétabilité (seulement pour la Régression Logistique)
+                    if model_name == "Logistic_Regression":
+                        st.write("##### Analyse des facteurs d'influence")
+                        
+                        clf = model.named_steps['clf']
+                        coeffs = pd.DataFrame(clf.coef_[0], index=input_df.columns, columns=["Poids"])
+                        
+                        impact = coeffs["Poids"] * input_df.iloc[0]
+                        impact_df = impact.sort_values(ascending=False)
+                        
+                        fig_impact = px.bar(impact_df, orientation='h', 
+                                            color=impact_df > 0, 
+                                            color_discrete_map={True: '#FF4B4B', False: '#2ECC71'})
+                        fig_impact.update_layout(showlegend=False, margin=dict(l=0, r=0, t=20, b=20), height=300)
+                        st.plotly_chart(fig_impact, width='stretch')
 
 with tab2:
     st.header("Suivi MLflow")
