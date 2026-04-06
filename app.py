@@ -231,11 +231,40 @@ with tab1:
 
                 st.info(f"Modèle utilisé ({model_name}) - Run ID : {run_id} (Score F2 : {val_f2:.4f})")
 
-                # ... (chargement du modèle, préparation input_df)
+                # 2. Charger le pipeline (inclut le scaler)
                 model = mlflow.sklearn.load_model(f"runs:/{run_id}/model")
-                # ... (préparation input_df identique)
+
+                # 3. Préparer les données pour le modèle
+                features_model = features_calculated.copy()
+                features_model.update({
+                    "income": income,
+                    "loan_amt_outstanding": loan_amt,
+                    "years_employed": years_emp,
+                    "fico_score": fico
+                })
                 
-                # ... (prédiction et affichage des résultats)
+                if dataset_mode == "full_features":
+                    features_model.update({
+                        "credit_lines_outstanding": credit_lines,
+                        "total_debt_outstanding": total_debt
+                    })
+                    ordered_cols = [
+                        "credit_lines_outstanding", "loan_amt_outstanding", "total_debt_outstanding", 
+                        "income", "years_employed", "fico_score", "debt_to_income", 
+                        "loan_to_income", "loan_to_debt", "debt_per_credit_line", 
+                        "income_per_credit_line", "credit_lines_per_year", 
+                        "loan_per_year_employed", "fico_income_interaction", "fico_debt_interaction"
+                    ]
+                else:
+                    ordered_cols = [
+                        "loan_amt_outstanding", "income", "years_employed", 
+                        "fico_score", "loan_to_income", "loan_per_year_employed", 
+                        "fico_income_interaction"
+                    ]
+                    
+                input_df = pd.DataFrame([features_model])[ordered_cols]
+                
+                # 4. Prédiction
                 proba = model.predict_proba(input_df)[0][1]
                 is_default = proba >= threshold
                 
@@ -251,7 +280,24 @@ with tab1:
                 c2.metric("Probabilité de défaut", f"{proba:.2%}")
                 c2.progress(float(proba))
 
-                # ... (Analyse des facteurs d'influence identique)
+                # 5. Interprétabilité (seulement pour la Régression Logistique)
+                if model_name == "Logistic_Regression":
+                    st.divider()
+                    st.subheader("💡 Analyse des facteurs d'influence")
+                    
+                    clf = model.named_steps['clf']
+                    coeffs = pd.DataFrame(clf.coef_[0], index=input_df.columns, columns=["Poids"])
+                    
+                    # Impact = poids * valeur (déjà scalée par le pipeline)
+                    impact = coeffs["Poids"] * input_df.iloc[0]
+                    impact_df = impact.sort_values(ascending=False)
+                    
+                    fig_impact = px.bar(impact_df, orientation='h', 
+                                        title="Contribution des variables au score de risque",
+                                        color=impact_df > 0, 
+                                        color_discrete_map={True: '#FF4B4B', False: '#00CC96'})
+                    fig_impact.update_layout(showlegend=False)
+                    st.plotly_chart(fig_impact, width='stretch') # Corrigé 'use_container_width' par 'width' comme conseillé par Streamlit
 
 with tab2:
     st.header("Suivi MLflow")
