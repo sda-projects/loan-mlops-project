@@ -274,7 +274,6 @@ with tab1:
                     st.warning("Le modèle prédit un risque de défaut pour ce dossier.")
                 else:
                     c1.success("✅ RISQUE FAIBLE")
-                    st.balloons()
                     st.info("Le modèle ne détecte pas de risque significatif de défaut.")
                 
                 c2.metric("Probabilité de défaut", f"{proba:.2%}")
