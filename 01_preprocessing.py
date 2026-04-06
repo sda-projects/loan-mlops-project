@@ -127,18 +127,12 @@ def split_data(df, target_column, feature_mode):
         X_temp, y_temp, test_size=0.176, random_state=42, stratify=y_temp
     )
 
-    # Fit scaling only on the training fold, then reuse it for validation and test.
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_val_scaled = scaler.transform(X_val)
-    X_test_scaled = scaler.transform(X_test)
-    
-    # Convert back to DataFrame to preserve feature names.
-    X_train_scaled = pd.DataFrame(X_train_scaled, columns=X.columns)
-    X_val_scaled = pd.DataFrame(X_val_scaled, columns=X.columns)
-    X_test_scaled = pd.DataFrame(X_test_scaled, columns=X.columns)
+    # Don't scale here, let the Pipeline in training handle it.
+    X_train = pd.DataFrame(X_train, columns=X.columns)
+    X_val = pd.DataFrame(X_val, columns=X.columns)
+    X_test = pd.DataFrame(X_test, columns=X.columns)
 
-    return X_train_scaled, X_val_scaled, X_test_scaled, y_train, y_val, y_test
+    return X_train, X_val, X_test, y_train, y_val, y_test
 
 
 def save_processed_split(output_dir, X_train, X_val, X_test, y_train, y_val, y_test):
