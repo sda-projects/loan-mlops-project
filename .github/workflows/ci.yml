@@ -24,7 +24,31 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          grep -v -E 'pywin32|contourpy' requirements.txt > requirements-ci.txt
+          python - <<'PY'
+          from pathlib import Path
+
+          raw = Path("requirements.txt").read_bytes()
+
+          text = None
+          for enc in ("utf-8", "utf-8-sig", "utf-16", "utf-16-le", "utf-16-be"):
+              try:
+                  text = raw.decode(enc)
+                  break
+              except UnicodeDecodeError:
+                  pass
+
+          if text is None:
+              raise ValueError("Could not decode requirements.txt")
+
+          filtered = []
+          for line in text.splitlines():
+              stripped = line.strip()
+              if stripped.startswith("pywin32") or stripped.startswith("contourpy"):
+                  continue
+              filtered.append(line)
+
+          Path("requirements-ci.txt").write_text("\n".join(filtered) + "\n", encoding="utf-8")
+          PY
           python -m pip install -r requirements-ci.txt
 
       - name: Verify pandas
