@@ -1,3 +1,4 @@
+import json
 import pandas as pd
 import mlflow
 import mlflow.sklearn
@@ -10,6 +11,9 @@ from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_sc
 
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
 MLFLOW_CLIENT = MlflowClient()
+ARTIFACT_TMP_DIR = Path("artifacts_tmp")
+ARTIFACT_TMP_DIR.mkdir(exist_ok=True)
+EVALUATION_EXPERIMENT = "Loan_Default_Evaluation_Local"
 
 FEATURE_COLUMNS = {
     "full_features": [
@@ -115,6 +119,8 @@ def get_latest_finished_run(experiment_name, dataset_mode):
 final_result = []
 dataset_modes = choose_dataset_mode()
 
+mlflow.set_experiment(EVALUATION_EXPERIMENT)
+
 for dataset_mode in dataset_modes:
     split_dir = f"data/processed/{dataset_mode}"
     X_test, y_test = load_test_split(split_dir)
@@ -131,11 +137,23 @@ for dataset_mode in dataset_modes:
         )
 
         with mlflow.start_run(
-            run_id=info["run_id"],
-            nested=True,
             run_name=f"Test_Eval_{name}_{dataset_mode}",
         ):
+            mlflow.set_tags(
+                {
+                    "run_type": "evaluation",
+                    "source_training_run_id": info["run_id"],
+                    "source_training_experiment_id": info["experiment_id"],
+                    "model_name": name,
+                    "dataset_mode": dataset_mode,
+                }
+            )
+            mlflow.log_param("source_training_run_id", info["run_id"])
+            mlflow.log_param("source_training_experiment_id", info["experiment_id"])
             mlflow.log_param("test_evaluation_mode", dataset_mode)
+            mlflow.log_param("model_name", name)
+            mlflow.log_param("optimized_threshold", round(info["threshold"], 3))
+            mlflow.log_metric("source_val_f2", info["val_f2"])
             model = mlflow.sklearn.load_model(get_model_artifact_path(info["run_id"]))
 
             y_proba = model.predict_proba(X_test)[:, 1]
@@ -178,8 +196,37 @@ for dataset_mode in dataset_modes:
                 json.dump(metrics, f, indent=4)
             mlflow.log_artifact(metrics_path)
 
+            metrics_path = ARTIFACT_TMP_DIR / f"eval_metrics_{name}_{dataset_mode}.json"
+            metrics_payload = {
+                "model_name": name,
+                "dataset_mode": dataset_mode,
+                "source_training_run_id": info["run_id"],
+                "source_training_experiment_id": info["experiment_id"],
+                "optimized_threshold": round(info["threshold"], 3),
+                "source_val_f2": info["val_f2"],
+                "test_metrics": metrics,
+            }
+            metrics_path.write_text(
+                json.dumps(metrics_payload, indent=2),
+                encoding="utf-8",
+            )
+            mlflow.log_artifact(str(metrics_path), artifact_path="evaluation")
+            metrics_path.unlink()
+
+            predictions_path = ARTIFACT_TMP_DIR / f"test_predictions_{name}_{dataset_mode}.csv"
+            predictions_df = X_test.copy()
+            predictions_df["y_true"] = y_test
+            predictions_df["y_proba"] = y_proba
+            predictions_df["y_pred"] = y_pred
+            predictions_df.to_csv(predictions_path, index=False)
+            mlflow.log_artifact(str(predictions_path), artifact_path="evaluation")
+            predictions_path.unlink()
+
             final_result.append({"Model": name, "Mode": dataset_mode, **metrics})
-            print(f"{name} test metrics logged to MLflow (nested in {info['run_id']})")
+            print(
+                f"{name} test metrics and artifacts logged to MLflow "
+                f"(source training run: {info['run_id']})"
+            )
 
 print("\n", pd.DataFrame(final_result))
 
