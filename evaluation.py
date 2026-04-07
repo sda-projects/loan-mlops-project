@@ -1,10 +1,12 @@
 import pandas as pd
 import mlflow
 import mlflow.sklearn
+import matplotlib.pyplot as plt
 from mlflow.exceptions import MlflowException
 from mlflow.tracking import MlflowClient
 from pathlib import Path
-from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score, fbeta_score
+
+from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score, fbeta_score, classification_report, ConfusionMatrixDisplay
 
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
 MLFLOW_CLIENT = MlflowClient()
@@ -147,9 +149,44 @@ for dataset_mode in dataset_modes:
                 "test_accuracy": accuracy_score(y_test, y_pred),
             }
 
+            # 1. Generate Confusion Matrix Plot
+   
+
             mlflow.log_metrics(metrics)
+            mlflow.log_metrics(metrics)
+
+            # 2. Log Visual Artifacts (Confusion Matrix)
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ConfusionMatrixDisplay.from_predictions(y_test, y_pred, ax=ax, cmap='Blues')
+            plt.title(f"Confusion Matrix: {name} ({dataset_mode})")
+            
+            plot_filename = f"cm_{name}_{dataset_mode}.png"
+            plt.savefig(plot_filename)
+            plt.close(fig) 
+            mlflow.log_artifact(plot_filename)
+
+            # 3. Save the Classification Report (Detailed Precision/Recall per class)
+            report_path = f"report_{name}_{dataset_mode}.txt"
+            with open(report_path, "w") as f:
+                f.write(classification_report(y_test, y_pred))
+            mlflow.log_artifact(report_path)
+
+            # 4. Save the Metrics as a JSON (Great for automated reports)
+            import json
+            metrics_path = f"metrics_{name}_{dataset_mode}.json"
+            with open(metrics_path, "w") as f:
+                json.dump(metrics, f, indent=4)
+            mlflow.log_artifact(metrics_path)
 
             final_result.append({"Model": name, "Mode": dataset_mode, **metrics})
             print(f"{name} test metrics logged to MLflow (nested in {info['run_id']})")
 
 print("\n", pd.DataFrame(final_result))
+
+# Convert the list of dicts to a DataFrame
+summary_df = pd.DataFrame(final_result)
+summary_df.to_csv("final_model_comparison.csv", index=False)
+
+# Log the master table to a "Global" run or just keep it locally for your report
+print("\n--- FINAL SUMMARY TABLE ---")
+print(summary_df.to_string(index=False))
