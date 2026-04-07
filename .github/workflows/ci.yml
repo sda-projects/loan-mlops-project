@@ -76,10 +76,12 @@ jobs:
           Path("requirements-ci.txt").write_text("\n".join(filtered) + "\n", encoding="utf-8")
           PY
           python -m pip install -r requirements-ci.txt
+          python -m pip install pytest
 
-      - name: Verify pandas
+      - name: Verify key packages
         run: |
           python -c "import pandas; print('pandas OK')"
+          python -c "import sklearn; print('scikit-learn OK')"
 
       - name: Create folders
         run: |
@@ -91,4 +93,4 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest tests/
+          python -m pytest tests/
