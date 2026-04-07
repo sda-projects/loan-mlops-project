@@ -40,10 +40,36 @@ jobs:
           if text is None:
               raise ValueError("Could not decode requirements.txt")
 
+          blocked_prefixes = (
+              "pywin32",
+              "contourpy",
+              "ipython",
+              "ipykernel",
+              "jupyter_client",
+              "jupyter_core",
+              "matplotlib-inline",
+              "comm",
+              "debugpy",
+              "pexpect",
+              "ptyprocess",
+              "pyzmq",
+              "traitlets",
+              "prompt_toolkit",
+              "stack-data",
+              "asttokens",
+              "pure_eval",
+              "executing",
+              "decorator",
+              "ipython_pygments_lexers",
+          )
+
           filtered = []
           for line in text.splitlines():
               stripped = line.strip()
-              if stripped.startswith("pywin32") or stripped.startswith("contourpy"):
+              if not stripped or stripped.startswith("#"):
+                  filtered.append(line)
+                  continue
+              if stripped.startswith(blocked_prefixes):
                   continue
               filtered.append(line)
 
