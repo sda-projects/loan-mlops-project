@@ -172,7 +172,7 @@ fig_scatter = px.scatter(df, x="income", y="total_debt_outstanding",
 st.plotly_chart(fig_scatter)
 
 # Création des onglets
-tab1, tab2 = st.tabs(["🤖 Simulateur de Crédit", "📈 Performance Modèle"])
+tab1, tab2 = st.tabs(["🤖 Simulateur de Crédit", "📈 Performances Modèle"])
 
 with tab1:
     st.header("Simulateur de crédit en temps réel")
@@ -281,4 +281,49 @@ with tab1:
 
 with tab2:
     st.header("Suivi MLflow")
-    st.info("Cette section présente les métriques de tracking enregistrées lors des expérimentations.")
+    st.info("Cette section présente les métriques de tracking et artefacts enregistrées lors des expérimentations.")
+    st.divider()
+
+    # --- Section 1 : Modèle avec Safe Features ---
+    st.subheader("1. Modèle Régression Logistique : Safe Features")
+    st.caption("Utilisation uniquement des variables : 'loan_amt_outstanding', 'income', 'years_employed', 'fico_score'")
+    
+    # Création de deux colonnes
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write("**📊 Métriques de Test (MLflow)**")
+        try:
+            st.image("assets/lr_sf-metrics.jpeg", caption="Métriques extraites de MLflow", use_container_width=True)
+        except FileNotFoundError:
+            st.error("L'image 'assets/lr_sf-metrics.jpeg' est introuvable. Vérifiez le dossier 'assets'.")
+
+    with col2:
+        st.write("**🧩 Matrice de Confusion**")
+        try:
+            st.image("assets/cm_Logistic_Regression_safe_features.png", caption="Matrice de confusion sur jeu de test", use_container_width=True)
+        except FileNotFoundError:
+            st.error("L'image 'assets/cm_Logistic_Regression_safe_features.png' est introuvable.")
+
+    st.divider()
+
+    # --- Section 2 : Modèle avec Full Features ---
+    st.subheader("2. Modèle Régression Logistique : Full Features")
+    st.caption("Utilisation de toutes les variables (y compris dettes et lignes de crédit)")
+
+    # Création de deux nouvelles colonnes
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        st.write("**📊 Métriques de Test (MLflow)**")
+        try:
+            st.image("assets/lr_ff-metrics.jpeg", caption="Métriques extraites de MLflow", use_container_width=True)
+        except FileNotFoundError:
+            st.error("L'image 'assets/lr_ff-metrics.jpeg' est introuvable.")
+
+    with col4:
+        st.write("**🧩 Matrice de Confusion**")
+        try:
+            st.image("assets/cm_Logistic_Regression_full_features.png", caption="Matrice de confusion sur jeu de test", use_container_width=True)
+        except FileNotFoundError:
+            st.error("L'image 'assets/cm_Logistic_Regression_full_features.png' est introuvable.")
