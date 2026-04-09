@@ -15,3 +15,7 @@ GEMINI.md
 alexandre.py
 .tmp/
 artifacts_tmp/
+/cm_*.png
+/metrics_*.json
+/report_*.txt
+/final_model_comparison.csv

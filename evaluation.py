@@ -43,6 +43,10 @@ def load_test_split(split_dir):
     return X_test, y_test
 
 
+def tmp_artifact_path(filename):
+    return ARTIFACT_TMP_DIR / filename
+
+
 training_experiments = {
     "Logistic_Regression": "Loan_Default_Logistic_Regression_Local",
     "Random_Forest": "Loan_Default_Random_Forest_Local",
@@ -178,25 +182,27 @@ for dataset_mode in dataset_modes:
             ConfusionMatrixDisplay.from_predictions(y_test, y_pred, ax=ax, cmap='Blues')
             plt.title(f"Confusion Matrix: {name} ({dataset_mode})")
             
-            plot_filename = f"cm_{name}_{dataset_mode}.png"
-            plt.savefig(plot_filename)
+            plot_path = tmp_artifact_path(f"cm_{name}_{dataset_mode}.png")
+            plt.savefig(plot_path)
             plt.close(fig) 
-            mlflow.log_artifact(plot_filename)
+            mlflow.log_artifact(str(plot_path))
+            plot_path.unlink()
 
             # 3. Save the Classification Report (Detailed Precision/Recall per class)
-            report_path = f"report_{name}_{dataset_mode}.txt"
+            report_path = tmp_artifact_path(f"report_{name}_{dataset_mode}.txt")
             with open(report_path, "w") as f:
                 f.write(classification_report(y_test, y_pred))
-            mlflow.log_artifact(report_path)
+            mlflow.log_artifact(str(report_path))
+            report_path.unlink()
 
             # 4. Save the Metrics as a JSON (Great for automated reports)
-            import json
-            metrics_path = f"metrics_{name}_{dataset_mode}.json"
+            metrics_path = tmp_artifact_path(f"metrics_{name}_{dataset_mode}.json")
             with open(metrics_path, "w") as f:
                 json.dump(metrics, f, indent=4)
-            mlflow.log_artifact(metrics_path)
+            mlflow.log_artifact(str(metrics_path))
+            metrics_path.unlink()
 
-            metrics_path = ARTIFACT_TMP_DIR / f"eval_metrics_{name}_{dataset_mode}.json"
+            eval_metrics_path = tmp_artifact_path(f"eval_metrics_{name}_{dataset_mode}.json")
             metrics_payload = {
                 "model_name": name,
                 "dataset_mode": dataset_mode,
@@ -206,14 +212,14 @@ for dataset_mode in dataset_modes:
                 "source_val_f2": info["val_f2"],
                 "test_metrics": metrics,
             }
-            metrics_path.write_text(
+            eval_metrics_path.write_text(
                 json.dumps(metrics_payload, indent=2),
                 encoding="utf-8",
             )
-            mlflow.log_artifact(str(metrics_path), artifact_path="evaluation")
-            metrics_path.unlink()
+            mlflow.log_artifact(str(eval_metrics_path), artifact_path="evaluation")
+            eval_metrics_path.unlink()
 
-            predictions_path = ARTIFACT_TMP_DIR / f"test_predictions_{name}_{dataset_mode}.csv"
+            predictions_path = tmp_artifact_path(f"test_predictions_{name}_{dataset_mode}.csv")
             predictions_df = X_test.copy()
             predictions_df["y_true"] = y_test
             predictions_df["y_proba"] = y_proba
@@ -232,7 +238,10 @@ print("\n", pd.DataFrame(final_result))
 
 # Convert the list of dicts to a DataFrame
 summary_df = pd.DataFrame(final_result)
-summary_df.to_csv("final_model_comparison.csv", index=False)
+summary_path = tmp_artifact_path("final_model_comparison.csv")
+summary_df.to_csv(summary_path, index=False)
+mlflow.log_artifact(str(summary_path), artifact_path="evaluation")
+summary_path.unlink()
 
 # Log the master table to a "Global" run or just keep it locally for your report
 print("\n--- FINAL SUMMARY TABLE ---")
