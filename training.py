@@ -1,0 +1,238 @@
+import pandas as pd 
+import numpy as np
+import mlflow 
+import mlflow.sklearn
+import os
+import shutil
+import tempfile
+from datetime import datetime
+from pathlib import Path
+from sklearn.base import clone
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, ParameterGrid, StratifiedKFold
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from sklearn.metrics import make_scorer, accuracy_score, f1_score, precision_score, recall_score, roc_auc_score, fbeta_score
+
+mlflow.set_tracking_uri("sqlite:///mlflow.db")
+TMP_DIR = Path(".tmp")
+TMP_DIR.mkdir(exist_ok=True)
+os.environ["TMP"] = str(TMP_DIR.resolve())
+os.environ["TEMP"] = str(TMP_DIR.resolve())
+os.environ["TMPDIR"] = str(TMP_DIR.resolve())
+tempfile.tempdir = str(TMP_DIR.resolve())
+
+DATASET_OPTIONS = {
+    "1": "full_features",
+    "2": "safe_features",
+}
+
+
+def choose_dataset_mode():
+    return ["full_features", "safe_features"]
+
+
+def load_split(split_dir):
+    X_train = pd.read_csv(f"{split_dir}/X_train.csv")
+    X_val = pd.read_csv(f"{split_dir}/X_val.csv")
+    y_train = pd.read_csv(f"{split_dir}/y_train.csv").values.ravel()
+    y_val = pd.read_csv(f"{split_dir}/y_val.csv").values.ravel()
+    return X_train, X_val, y_train, y_val
+
+param_grids = {
+    "Logistic_Regression": {
+        "clf__C": [0.001, 0.01, 0.1, 1, 10, 100],  # Utilisation du préfixe 'clf__' pour le Pipeline
+        "clf__solver": ["liblinear"]
+    },
+    "Random_Forest": {
+        "clf__n_estimators": [100, 200, 300],
+        "clf__max_depth": [5, 10, 20, None],
+        "clf__min_samples_split": [2, 5, 10],
+        "clf__min_samples_leaf": [1, 2, 4]
+    }, 
+    "XGBoost": {
+        "clf__n_estimators": [100, 200, 300],
+        "clf__learning_rate": [0.03, 0.05, 0.1, 0.2],
+        "clf__max_depth": [3, 4, 5, 6],
+        "clf__subsample": [0.8, 1.0],
+        "clf__colsample_bytree": [0.8, 1.0]
+    }
+}
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+
+models = {
+    "Logistic_Regression": Pipeline([
+        ('scaler', StandardScaler()),
+        ('clf', LogisticRegression(max_iter=1000, class_weight="balanced"))
+    ]),
+    "Random_Forest": Pipeline([
+        ('scaler', StandardScaler()),
+        ('clf', RandomForestClassifier(random_state=42, class_weight="balanced"))
+    ]),
+    "XGBoost": Pipeline([
+        ('scaler', StandardScaler()),
+        ('clf', XGBClassifier(random_state=42, scale_pos_weight=4.2))
+    ])
+}
+
+EXPERIMENT_NAMES = {
+    "Logistic_Regression": "Loan_Default_Logistic_Regression_Local",
+    "Random_Forest": "Loan_Default_Random_Forest_Local",
+    "XGBoost": "Loan_Default_XGBoost_Local",
+}
+
+model_pip_requirements = [
+    "mlflow==3.10.1",
+    "scikit-learn==1.8.0",
+    "skops==0.13.0",
+    "xgboost==3.2.0"
+]
+
+ARTIFACT_TMP_DIR = Path("artifacts_tmp")
+ARTIFACT_TMP_DIR.mkdir(exist_ok=True)
+
+trusted_xgboost_types = [
+    "sklearn.calibration.CalibratedClassifierCV",
+    "sklearn.calibration._CalibratedClassifier",
+    "sklearn.calibration._SigmoidCalibration",
+    "xgboost.core.Booster",
+    "xgboost.sklearn.XGBClassifier",
+    "sklearn.pipeline.Pipeline",
+    "sklearn.preprocessing._data.StandardScaler"
+]
+
+search_iterations = {
+    "Random_Forest": 20,
+    "XGBoost": 30
+}
+
+scoring_metrics = {
+    "f2": make_scorer(fbeta_score, beta=2),
+    "f1": make_scorer(f1_score),
+    "precision": make_scorer(precision_score),
+    "recall": make_scorer(recall_score),
+    "accuracy": make_scorer(accuracy_score)
+}
+
+# Stratified CV preserves the default/non-default ratio in each fold.
+cv_strategy = StratifiedKFold(n_splits=5, shuffle=False)
+
+dataset_modes = choose_dataset_mode()
+
+for dataset_mode in dataset_modes:
+    split_dir = f"data/processed/{dataset_mode}"
+    X_train, X_val, y_train, y_val = load_split(split_dir)
+    
+    # Vérification explicite :
+    # En mode 'safe', on ne doit avoir que 4 colonnes (loan_amt, income, years_emp, fico)
+    # En mode 'full', on doit avoir 6 colonnes
+    expected_cols = 4 if dataset_mode == 'safe_features' else 6
+    if X_train.shape[1] != expected_cols:
+        raise ValueError(f"Mismatch: Dataset mode '{dataset_mode}' expected {expected_cols} columns, but got {X_train.shape[1]}")
+
+    print(f"Training with dataset mode: {dataset_mode} (Columns: {X_train.shape[1]})")
+
+    for model_name, model_obj in models.items(): 
+        mlflow.set_experiment(EXPERIMENT_NAMES[model_name])
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        run_name = f"{model_name}_{dataset_mode}_{timestamp}"
+
+        with mlflow.start_run(run_name=run_name):
+            mlflow.log_param("feature_mode", dataset_mode)
+            total_candidates = len(list(ParameterGrid(param_grids[model_name])))
+
+            if model_name == "Logistic_Regression":
+                cv_search = GridSearchCV(
+                    estimator=model_obj,
+                    param_grid=param_grids[model_name],
+                    cv=cv_strategy,
+                    scoring=scoring_metrics,
+                    refit="f2",
+                    n_jobs=1
+                )
+            else:
+                n_iter = min(search_iterations[model_name], total_candidates)
+                cv_search = RandomizedSearchCV(
+                    estimator=model_obj,
+                    param_distributions=param_grids[model_name],
+                    n_iter=n_iter,
+                    cv=cv_strategy,
+                    scoring=scoring_metrics,
+                    refit="f2",
+                    n_jobs=1,
+                    random_state=42
+                )
+
+            cv_search.fit(X_train, y_train)
+            best_model = cv_search.best_estimator_
+            calibrated_model = CalibratedClassifierCV(
+                estimator=clone(best_model),
+                method="sigmoid",
+                cv=5
+            )
+            calibrated_model.fit(X_train, y_train)
+
+            cv_results = (
+                pd.DataFrame(cv_search.cv_results_)
+                .sort_values("rank_test_f2")
+                .reset_index(drop=True)
+            )
+
+            # Use calibrated probabilities for threshold tuning and UI-facing risk scores.
+            y_val_proba = calibrated_model.predict_proba(X_val)[:, 1]
+            thresholds = np.linspace(0.1, 0.9, 81)
+            
+            best_val_f2 = 0 # Initialize this!
+            final_thresh = 0.5
+            
+            for t in thresholds:
+                current_f2 = fbeta_score(y_val, (y_val_proba >= t).astype(int), beta=2)
+                if current_f2 > best_val_f2:
+                    best_val_f2 = current_f2
+                    final_thresh = t
+
+            # 3. Log everything to MLflow
+            y_val_pred = (y_val_proba >= final_thresh).astype(int)
+            
+            mlflow.log_params(cv_search.best_params_)
+            mlflow.log_param("probability_calibration", "sigmoid_cv5")
+            mlflow.log_param("optimized_threshold", round(final_thresh, 3))
+            mlflow.log_param("target_metric", "F2_Score")
+            mlflow.log_metric("cv_best_f2", cv_search.best_score_)
+            mlflow.log_metric("cv_best_f1", cv_results.loc[0, "mean_test_f1"])
+            mlflow.log_metric("cv_best_precision", cv_results.loc[0, "mean_test_precision"])
+            mlflow.log_metric("cv_best_recall", cv_results.loc[0, "mean_test_recall"])
+            mlflow.log_metric("cv_best_accuracy", cv_results.loc[0, "mean_test_accuracy"])
+
+            cv_results_path = ARTIFACT_TMP_DIR / f"{model_name}_{dataset_mode}_cv_results.csv"
+            cv_results.to_csv(cv_results_path, index=False)
+            mlflow.log_artifact(str(cv_results_path), artifact_path="cv_results")
+            os.remove(cv_results_path)
+
+            # Log both metrics so you can see the trade-off in the UI
+            mlflow.log_metric("val_f2", best_val_f2)
+            mlflow.log_metric("val_f1", f1_score(y_val, y_val_pred))
+            mlflow.log_metric("val_recall", recall_score(y_val, y_val_pred))
+            mlflow.log_metric("val_precision", precision_score(y_val, y_val_pred))
+            mlflow.log_metric("val_accuracy", accuracy_score(y_val, y_val_pred))
+            mlflow.log_metric("val_auc", roc_auc_score(y_val, y_val_proba))
+
+            model_export_dir = ARTIFACT_TMP_DIR / f"{run_name}_model"
+            if model_export_dir.exists():
+                shutil.rmtree(model_export_dir)
+
+            mlflow.sklearn.save_model(
+                sk_model=calibrated_model,
+                path=str(model_export_dir),
+                serialization_format="skops",
+                pip_requirements=model_pip_requirements,
+                skops_trusted_types=trusted_xgboost_types
+            )
+            mlflow.log_artifacts(str(model_export_dir), artifact_path="model")
+
+            print(f"{model_name} Optimized for F2!")
+            print(f"   Best Thresh: {final_thresh:.3f} | Val F2: {best_val_f2:.4f}")
+            print(f"   (Resulting Val Recall: {recall_score(y_val, y_val_pred):.4f})")
